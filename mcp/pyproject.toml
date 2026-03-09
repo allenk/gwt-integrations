@@ -1,0 +1,20 @@
+[project]
+name = "gwt-mcp"
+version = "0.1.0"
+description = "MCP server for GeminiWatermarkTool — remove Gemini AI watermarks"
+readme = "../README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "AllenK (kwyshell)" }]
+dependencies = ["fastmcp>=0.1.0"]
+
+[project.scripts]
+gwt-mcp = "server:main"
+
+[project.urls]
+Homepage = "https://github.com/allenk/gwt-integrations"
+"Core Tool" = "https://github.com/allenk/GeminiWatermarkTool"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
