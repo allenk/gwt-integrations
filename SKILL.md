@@ -32,10 +32,18 @@ Search in this order:
 3. Skill bin directory:
    - Windows: `%USERPROFILE%\.claude\skills\gwt\bin\GeminiWatermarkTool.exe`
    - Linux/macOS: `~/.claude/skills/gwt/bin/GeminiWatermarkTool`
+4. Repo-local bin directory (validation mode / fallback):
+   - Windows: `.\bin\GeminiWatermarkTool.exe`
+   - Linux/macOS: `./bin/GeminiWatermarkTool`
 
 If not found, run the installer (located at repo root, same directory as this skill):
 ```
 python ~/.claude/skills/gwt/install.py
+```
+
+For local validation inside this repo only:
+```
+python ./install.py --dir ./bin
 ```
 
 **Always pass `--no-banner`** when calling GWT — suppresses ASCII art that wastes tokens.

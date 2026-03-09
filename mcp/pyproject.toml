@@ -15,6 +15,9 @@ gwt-mcp = "server:main"
 Homepage = "https://github.com/allenk/gwt-integrations"
 "Core Tool" = "https://github.com/allenk/GeminiWatermarkTool"
 
+[tool.hatchling.build]
+packages = ["."]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -3,7 +3,7 @@
 GeminiWatermarkTool — Cross-platform binary installer
 
 Downloads the appropriate GWT binary from GitHub Releases and installs
-it to ~/.claude/skills/gwt/bin/ for use with the Claude Code Skill.
+it to ~/.claude/skills/gwt/bin/ by default.
 
 Usage:
     python install.py
@@ -41,11 +41,23 @@ KNOWN_SHA256: dict[tuple[str, str], str] = {
     ("v0.2.5", "Darwin"):  "ffe22dc7d9890c7bb5210070eefe820c9539bea47dfeb7b9c51f0912758599a9",
 }
 
+REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_INSTALL_DIRS = {
     "Windows": Path(os.environ.get("USERPROFILE", Path.home())) / ".claude" / "skills" / "gwt" / "bin",
     "Linux":   Path.home() / ".claude" / "skills" / "gwt" / "bin",
     "Darwin":  Path.home() / ".claude" / "skills" / "gwt" / "bin",
 }
+
+
+def resolve_install_dir(system: str, custom_dir: str | None) -> Path:
+    if custom_dir:
+        return Path(custom_dir).expanduser().resolve()
+
+    env_dir = os.environ.get("GWT_INSTALL_DIR")
+    if env_dir:
+        return Path(env_dir).expanduser().resolve()
+
+    return DEFAULT_INSTALL_DIRS[system]
 
 
 def make_progress_hook(filename: str):
@@ -77,7 +89,7 @@ def sha256_file(path: Path) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Install GeminiWatermarkTool binary for Claude Code Skill"
+        description="Install GeminiWatermarkTool binary for Claude Code Skill or local validation"
     )
     parser.add_argument("--version", default="latest",
                         help="Release version (e.g. v0.2.5). Default: latest")
@@ -109,7 +121,7 @@ def main():
     else:
         url = f"{RELEASES_BASE}/download/{version_tag}/{zip_filename}"
 
-    install_dir = Path(args.dir) if args.dir else DEFAULT_INSTALL_DIRS[system]
+    install_dir = resolve_install_dir(system, args.dir)
     install_dir.mkdir(parents=True, exist_ok=True)
     dest = install_dir / binary_name
 
@@ -189,7 +201,7 @@ def main():
         print(f"  Unblock-File '{dest}'")
         print()
 
-    print('Open Claude Code and say: "What are my skills?"')
+    print("Set GWT_BINARY_PATH to this binary if your agent does not auto-discover it.")
 
 
 if __name__ == "__main__":

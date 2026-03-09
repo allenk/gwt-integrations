@@ -11,7 +11,18 @@ This repo provides two independent ways to let AI agents invoke GeminiWatermarkT
 | **Claude Code Skill** | Claude Code | Reads SKILL.md → builds CLI args → calls binary directly |
 | **MCP Server** | Claude Code, Cursor, Zed, OpenAI Codex, any MCP client | Calls MCP tools → server.py → binary |
 
-Both share the same GWT binary. `install.py` at the repo root handles installation for both paths.
+Both integrations share the same GWT binary. They do not use separate install locations by default.
+
+## Install Destination Rules
+
+| Integration path | Situation | Install location |
+|------------------|-----------|------------------|
+| Claude Code Skill | Normal use | `~/.claude/skills/gwt/bin/` |
+| MCP Server | Normal use | `~/.claude/skills/gwt/bin/` |
+| MCP Server | Local validation with `GWT_LOCAL_VALIDATION=1` | `./bin/` at the repo root |
+| Any path | Manual override with `python install.py --dir <path>` | The directory you specify |
+
+In other words, Skill and MCP normally install to the same `~/.claude/skills/gwt/bin/` location. The repo-local `./bin/` location is only for local validation or when you explicitly override the target directory.
 
 ---
 
@@ -53,11 +64,12 @@ gwt-integrations/
        Claude Code only            Any MCP client
 ```
 
-Binary discovery order (identical in both paths):
+Binary discovery order (default behavior):
 1. `GWT_BINARY_PATH` environment variable
 2. System `PATH`
-3. `~/.claude/skills/gwt/bin/` ← where `install.py` installs to
-4. `./bin/` relative to `server.py`
+3. `~/.claude/skills/gwt/bin/`
+4. `./bin/` at the repo root (local validation / fallback)
+5. `./mcp/bin/` relative to `server.py` (legacy fallback)
 
 If the binary is missing, both paths resolve it the same way:
 the agent runs `install.py` automatically.
@@ -78,11 +90,22 @@ Claude Code finds `SKILL.md` at `~/.claude/skills/gwt/SKILL.md` automatically.
 ### Install GWT binary
 
 The skill tells Claude Code where `install.py` is. When the binary is missing,
-the agent runs it automatically:
+the agent runs it automatically. By default, this installs to
+`~/.claude/skills/gwt/bin/`:
 
 ```bash
 # or run manually
 python ~/.claude/skills/gwt/install.py
+```
+
+### Local validation only
+
+To keep the repo self-contained during validation, install the binary locally
+instead of `~/.claude/skills/gwt/bin/`:
+
+```bash
+python ./install.py --dir ./bin
+# then: export GWT_LOCAL_VALIDATION=1
 ```
 
 ### Verify
@@ -92,7 +115,7 @@ Open Claude Code and ask: `"What skills do you have?"`
 ### Example prompts
 
 ```
-去掉這張圖的 Gemini 浮水印
+Remove the Gemini watermark from this image.
 Remove the watermark from all images in ~/Downloads/
 The bottom-right corner still has artifacts, fix it
 The image keeps getting skipped, try snap search
@@ -107,7 +130,14 @@ The image keeps getting skipped, try snap search
 ```bash
 git clone https://github.com/allenk/gwt-integrations
 cd gwt-integrations
-pip install -e mcp/
+pip install -e ./mcp
+```
+
+### Local validation only
+
+```bash
+pip install -e ./mcp
+python ./install.py --dir ./bin
 ```
 
 The MCP server will detect a missing binary on first use and return an
@@ -119,6 +149,12 @@ The MCP server will detect a missing binary on first use and return an
   "install_command": "python /path/to/gwt-integrations/install.py"
 }
 ```
+
+If you set `GWT_LOCAL_VALIDATION=1` before starting the MCP server, the returned
+`install_command` will target the repo-local `bin/` directory instead.
+
+Without `GWT_LOCAL_VALIDATION=1`, the MCP install command uses the default
+location: `~/.claude/skills/gwt/bin/`.
 
 ### Configure clients
 
@@ -164,6 +200,156 @@ codex --mcp-server "python /path/to/gwt-integrations/mcp/server.py"
 | `remove_watermark` | Single file, full parameter control |
 | `remove_watermark_snap` | Single file, resized/recompressed images |
 | `remove_watermark_batch` | Entire directory |
+
+---
+
+## Usage Scenarios
+
+This repo is most useful when the user does not want to manually build CLI
+arguments. Instead, they describe the image problem in natural language, and
+the agent maps that request to either the Skill path or the MCP tool path.
+
+### Scenario 1: Standard Gemini watermark in the default corner
+
+User says:
+
+```text
+Remove the Gemini watermark from this image.
+Remove the Gemini watermark from the bottom-right corner of this image.
+```
+
+Agent behavior:
+- Skill: runs standard GWT detection with no advanced flags
+- MCP: calls `remove_watermark(input_path, output_path)`
+
+Best for:
+- Typical Gemini output
+- Normal bottom-right watermark
+- Images that were not resized after generation
+
+### Scenario 2: Image was resized, recompressed, or screenshot
+
+User says:
+
+```text
+This image keeps getting skipped. Try snap search.
+This image was resized. Use snap search to find the watermark.
+```
+
+Agent behavior:
+- Skill: adds `--fallback-region ... --snap`
+- MCP: calls `remove_watermark_snap(...)`
+
+Best for:
+- JPEG recompression
+- Social-media reposts
+- Screenshots or edited exports
+- Cases where standard detection returns `[SKIP]`
+
+### Scenario 3: Watermark is still visible after one pass
+
+User says:
+
+```text
+The watermark is mostly gone but the corner still looks dirty.
+There are still artifacts in the bottom-right corner. Increase the strength a bit.
+```
+
+Agent behavior:
+- Keeps the same detected/custom region
+- Increases denoise settings, for example `sigma=75, strength=180`
+- Escalates further only if needed, for example `sigma=100, strength=250`
+
+Best for:
+- Faint edge residue
+- Partial removal
+- Watermark halo or dirty corners
+
+### Scenario 4: Non-standard watermark size or non-standard location
+
+User says:
+
+```text
+The watermark is not in the normal bottom-right position.
+Search the bottom-left 600x600 area with snap.
+The watermark size looks unusual. Search the bottom-right 200x200 area.
+```
+
+Agent behavior:
+- Uses region-constrained search instead of whole-image assumptions
+- Skill: uses `--fallback-region br:...` or `bl:...` with `--snap`
+- MCP: calls `remove_watermark(...)` with `fallback_region`, `snap`,
+  `snap_max_size`, and `snap_threshold`
+
+Best for:
+- Cropped images
+- Layout-shifted watermark positions
+- Smaller or larger than expected watermark sizes
+
+### Scenario 5: User knows the exact rectangle
+
+User says:
+
+```text
+Use custom region 683,1297,52,52 and remove it directly.
+Do not use snap. Use custom region 683,1297,52,52 directly.
+```
+
+Agent behavior:
+- Skips broad search
+- Applies GWT directly to the supplied region
+- Useful when a human has already visually identified the watermark
+
+Best for:
+- Repeated images from the same source
+- Fine-grained cleanup
+- Cases where broad snap search drifts to a wrong candidate
+
+### Scenario 6: Batch processing a folder
+
+User says:
+
+```text
+Remove Gemini watermarks from every image in this folder.
+Batch remove Gemini watermarks from every image in this folder.
+```
+
+Agent behavior:
+- Skill: calls GWT in directory mode
+- MCP: calls `remove_watermark_batch(input_dir, output_dir)`
+
+Best for:
+- Download folders
+- Image exports from a single generation session
+- Mixed folders where only some images contain a watermark
+
+### How users should talk to the agent
+
+The highest-signal instructions are:
+- Describe whether the image is standard, resized, cropped, or recompressed
+- Mention which corner to search: `bottom-right`, `bottom-left`, etc.
+- Mention whether the watermark size looks normal, smaller, or larger
+- If known, provide a region directly: `x,y,w,h`
+- If artifacts remain, say whether you want a mild cleanup or stronger cleanup
+
+Examples:
+
+```text
+Remove the Gemini watermark from this file.
+Try snap search in the bottom-right 200x200 area.
+Use custom region 683,1297,52,52.
+The first pass worked, but increase strength slightly.
+Process this whole folder and skip files with no watermark.
+```
+
+### Skill vs MCP in practice
+
+- Use the Skill when you want the agent to infer the CLI flags from normal
+  conversation in Claude Code.
+- Use MCP when you want structured tool calls, explicit arguments, and easier
+  integration with Cursor, Zed, Codex CLI, or any other MCP client.
+- In both cases, the user-facing request can stay natural-language; the
+  integration layer is what translates that request into GWT arguments.
 
 ---
 

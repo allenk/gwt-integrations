@@ -29,6 +29,14 @@ except ImportError:
 # Binary discovery
 # ---------------------------------------------------------------------------
 
+def _repo_bin(binary_name: str) -> Path:
+    return Path(__file__).resolve().parent.parent / "bin" / binary_name
+
+
+def _local_validation_enabled() -> bool:
+    return os.environ.get("GWT_LOCAL_VALIDATION", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def find_gwt_binary() -> Optional[str]:
     env_path = os.environ.get("GWT_BINARY_PATH")
     if env_path and Path(env_path).is_file():
@@ -40,13 +48,20 @@ def find_gwt_binary() -> Optional[str]:
     if in_path:
         return in_path
 
+    repo_bin = _repo_bin(binary_name)
     skill_bin = Path.home() / ".claude" / "skills" / "gwt" / "bin" / binary_name
-    if skill_bin.is_file():
-        return str(skill_bin)
-
     local_bin = Path(__file__).parent / "bin" / binary_name
-    if local_bin.is_file():
-        return str(local_bin)
+
+    if _local_validation_enabled():
+        # Local validation: prefer repo-local bin over skill bin
+        for p in (repo_bin, skill_bin, local_bin):
+            if p.is_file():
+                return str(p)
+    else:
+        # Normal: prefer skill bin over repo-local bin
+        for p in (skill_bin, repo_bin, local_bin):
+            if p.is_file():
+                return str(p)
 
     return None
 
@@ -54,6 +69,16 @@ def find_gwt_binary() -> Optional[str]:
 def _installer_path() -> Path:
     """install.py lives at repo root — one level above mcp/."""
     return Path(__file__).parent.parent / "install.py"
+
+
+def _default_install_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "bin"
+
+
+def _install_command(installer: Path) -> str:
+    if _local_validation_enabled():
+        return f'python "{installer}" --dir "{_default_install_dir()}"'
+    return f'python "{installer}"'
 
 
 # ---------------------------------------------------------------------------
@@ -69,15 +94,16 @@ mcp = FastMCP(
 )
 
 
-def _run_gwt(args: list[str]) -> dict:
+def _run_gwt(args: list[str], timeout: int = 120) -> dict:
     binary = find_gwt_binary()
     if not binary:
         installer = _installer_path()
         return {
             "success": False,
             "error": "GeminiWatermarkTool binary not found.",
-            "install_command": f"python {installer}",
+            "install_command": _install_command(installer),
             "installer_path": str(installer),
+            "expected_install_dir": str(_default_install_dir()) if _local_validation_enabled() else None,
             "hint": (
                 "Run install_command to download the binary automatically, "
                 "or set the GWT_BINARY_PATH environment variable. "
@@ -87,7 +113,7 @@ def _run_gwt(args: list[str]) -> dict:
 
     cmd = [binary, "--no-banner"] + args
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         stdout = proc.stdout.strip()
         stderr = proc.stderr.strip()
         output = "\n".join(filter(None, [stdout, stderr]))
@@ -100,7 +126,7 @@ def _run_gwt(args: list[str]) -> dict:
                 "returncode": proc.returncode,
             }
     except subprocess.TimeoutExpired:
-        return {"success": False, "error": "GWT timed out after 120 seconds"}
+        return {"success": False, "error": f"GWT timed out after {timeout} seconds"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -168,6 +194,8 @@ def remove_watermark(
 
     if not Path(input_abs).is_file():
         return {"success": False, "error": f"Input file not found: {input_abs}"}
+
+    Path(output_abs).parent.mkdir(parents=True, exist_ok=True)
 
     args = ["-i", input_abs, "-o", output_abs]
 
@@ -238,6 +266,8 @@ def remove_watermark_snap(
     if not Path(input_abs).is_file():
         return {"success": False, "error": f"Input file not found: {input_abs}"}
 
+    Path(output_abs).parent.mkdir(parents=True, exist_ok=True)
+
     # fallback_region + snap together = skip standard detection (by design in GWT)
     args = [
         "-i", input_abs, "-o", output_abs,
@@ -265,6 +295,7 @@ def remove_watermark_batch(
     denoise: Optional[str] = None,
     sigma: Optional[float] = None,
     strength: Optional[float] = None,
+    radius: Optional[int] = None,
     fallback_region: Optional[str] = None,
     snap: bool = False,
     snap_max_size: int = 320,
@@ -294,12 +325,16 @@ def remove_watermark_batch(
 
     if denoise and denoise.lower() not in ("off", "none", ""):
         args += ["--denoise", denoise]
-        if denoise.lower() == "ai" and sigma is not None:
-            args += ["--sigma", str(sigma)]
+        if denoise.lower() == "ai":
+            if sigma is not None:
+                args += ["--sigma", str(sigma)]
+        else:
+            if radius is not None:
+                args += ["--radius", str(radius)]
         if strength is not None:
             args += ["--strength", str(strength)]
 
-    return _run_gwt(args)
+    return _run_gwt(args, timeout=600)
 
 
 # ---------------------------------------------------------------------------
@@ -322,8 +357,9 @@ def get_gwt_info() -> dict:
     if not binary:
         return {
             "found": False,
-            "install_command": f"python {installer}",
+            "install_command": _install_command(installer),
             "installer_path": str(installer),
+            "expected_install_dir": str(_default_install_dir()) if _local_validation_enabled() else None,
             "installer_exists": installer.is_file(),
             "hint": (
                 "Run install_command to download the binary. "
