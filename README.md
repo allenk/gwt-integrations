@@ -53,14 +53,14 @@ gwt-integrations/
                              │
               ┌──────────────┴──────────────┐
               │                             │
-   ┌──────────▼──────────┐      ┌──────────▼──────────┐
+   ┌──────────▼──────────┐      ┌───────────▼──────────┐
    │   Claude Code Skill │      │      MCP Server      │
    │      SKILL.md       │      │   mcp/server.py      │
    │                     │      │                      │
    │  Agent reads docs,  │      │  Agent calls tools,  │
    │  builds CLI args,   │      │  server builds args, │
    │  execs binary       │      │  execs binary        │
-   └─────────────────────┘      └─────────────────────┘
+   └─────────────────────┘      └──────────────────────┘
        Claude Code only            Any MCP client
 ```
 
