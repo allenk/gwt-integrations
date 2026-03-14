@@ -11,7 +11,7 @@ description: >
   previous removal attempt.
 ---
 
-# GeminiWatermarkTool Skill for Claude-Like Agents
+# GeminiWatermarkTool Skill for Codex-Like Agents
 
 ## Overview
 
@@ -29,9 +29,9 @@ Search in this order:
 
 1. Environment variable: `GWT_BINARY_PATH`
 2. System PATH: `GeminiWatermarkTool` (or `.exe` on Windows)
-3. Claude skill bin directory:
-   - Windows: `%USERPROFILE%\.claude\skills\gwt\bin\GeminiWatermarkTool.exe`
-   - Linux/macOS: `~/.claude/skills/gwt/bin/GeminiWatermarkTool`
+3. Codex skill bin directory:
+   - Windows: `%USERPROFILE%\.codex\skills\gwt\bin\GeminiWatermarkTool.exe`
+   - Linux/macOS: `~/.codex/skills/gwt/bin/GeminiWatermarkTool`
 4. Repo-local bin directory (validation mode / fallback):
    - Windows: `.\bin\GeminiWatermarkTool.exe`
    - Linux/macOS: `./bin/GeminiWatermarkTool`
@@ -43,7 +43,7 @@ python ./install.py
 
 Installed skill location:
 
-- Claude-like agents: `%USERPROFILE%\.claude\skills\gwt\install.py`
+- Codex-like agents: `%USERPROFILE%\.codex\skills\gwt\install.py`
 
 For local validation inside this repo only:
 ```

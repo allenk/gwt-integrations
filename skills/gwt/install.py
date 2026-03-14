@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-GeminiWatermarkTool — cross-platform binary installer for Claude-like skills
+GeminiWatermarkTool — cross-platform binary installer for Codex-like skills
 
 Downloads the appropriate GWT binary from GitHub Releases and installs
-it to the Claude-like skill bin directory by default.
+it to the Codex-like skill bin directory by default.
 
 Usage:
     python install.py
@@ -51,11 +51,15 @@ def _agent_skill_root(system: str, agent_dirname: str) -> Path:
 
 
 def default_install_dir(system: str) -> Path:
+    codex_home = os.environ.get("CODEX_HOME")
+    if codex_home:
+        return Path(codex_home).expanduser().resolve() / "skills" / "gwt" / "bin"
+
     install_path = REPO_ROOT.resolve()
     install_parts = {part.lower() for part in install_path.parts}
-    if ".claude" in install_parts:
+    if ".codex" in install_parts:
         return install_path / "bin"
-    return _agent_skill_root(system, ".claude") / "bin"
+    return _agent_skill_root(system, ".codex") / "bin"
 
 
 def resolve_install_dir(system: str, custom_dir: str | None) -> Path:
@@ -98,7 +102,7 @@ def sha256_file(path: Path) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Install GeminiWatermarkTool binary for Claude-like skills or local validation"
+        description="Install GeminiWatermarkTool binary for Codex-like skills or local validation"
     )
     parser.add_argument("--version", default="latest",
                         help="Release version (e.g. v0.2.5). Default: latest")

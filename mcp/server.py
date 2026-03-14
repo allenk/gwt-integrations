@@ -49,17 +49,18 @@ def find_gwt_binary() -> Optional[str]:
         return in_path
 
     repo_bin = _repo_bin(binary_name)
-    skill_bin = Path.home() / ".claude" / "skills" / "gwt" / "bin" / binary_name
+    codex_bin = Path.home() / ".codex" / "skills" / "gwt" / "bin" / binary_name
+    claude_bin = Path.home() / ".claude" / "skills" / "gwt" / "bin" / binary_name
     local_bin = Path(__file__).parent / "bin" / binary_name
 
     if _local_validation_enabled():
         # Local validation: prefer repo-local bin over skill bin
-        for p in (repo_bin, skill_bin, local_bin):
+        for p in (repo_bin, codex_bin, claude_bin, local_bin):
             if p.is_file():
                 return str(p)
     else:
         # Normal: prefer skill bin over repo-local bin
-        for p in (skill_bin, repo_bin, local_bin):
+        for p in (codex_bin, claude_bin, repo_bin, local_bin):
             if p.is_file():
                 return str(p)
 
@@ -76,9 +77,9 @@ def _default_install_dir() -> Path:
 
 
 def _install_command(installer: Path) -> str:
-    if _local_validation_enabled():
-        return f'python "{installer}" --dir "{_default_install_dir()}"'
-    return f'python "{installer}"'
+    # MCP is shared across agent families — always install to repo-local bin
+    # so no single skill directory is assumed.
+    return f'python "{installer}" --dir "{_default_install_dir()}"'
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +104,7 @@ def _run_gwt(args: list[str], timeout: int = 120) -> dict:
             "error": "GeminiWatermarkTool binary not found.",
             "install_command": _install_command(installer),
             "installer_path": str(installer),
-            "expected_install_dir": str(_default_install_dir()) if _local_validation_enabled() else None,
+            "expected_install_dir": str(_default_install_dir()),
             "hint": (
                 "Run install_command to download the binary automatically, "
                 "or set the GWT_BINARY_PATH environment variable. "
@@ -359,7 +360,7 @@ def get_gwt_info() -> dict:
             "found": False,
             "install_command": _install_command(installer),
             "installer_path": str(installer),
-            "expected_install_dir": str(_default_install_dir()) if _local_validation_enabled() else None,
+            "expected_install_dir": str(_default_install_dir()),
             "installer_exists": installer.is_file(),
             "hint": (
                 "Run install_command to download the binary. "

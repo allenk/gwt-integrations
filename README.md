@@ -1,28 +1,39 @@
 # gwt-integrations
 
-> AI agent integrations for [GeminiWatermarkTool](https://github.com/allenk/GeminiWatermarkTool) — Claude Code Skill and MCP Server
+> AI agent integrations for [GeminiWatermarkTool](https://github.com/allenk/GeminiWatermarkTool) — Claude-like skill, Codex-like skill, and a shared MCP server
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/) [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-purple.svg)](https://www.anthropic.com/news/skills) [![MCP](https://img.shields.io/badge/Protocol-MCP-blue.svg)](https://modelcontextprotocol.io) [![Based on](https://img.shields.io/badge/Based%20on-GeminiWatermarkTool-orange.svg)](https://github.com/allenk/GeminiWatermarkTool) [![Built with](https://img.shields.io/badge/Built%20with-skill--creator-blueviolet.svg)](https://github.com/anthropics/skills/tree/main/skills/skill-creator) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) [![GitHub Stars](https://img.shields.io/github/stars/allenk/gwt-integrations?style=social)](https://github.com/allenk/gwt-integrations)
 
-This repo provides two independent ways to let AI agents invoke GeminiWatermarkTool automatically.
+This repo provides specialized skill entrypoints for different agent families plus one shared MCP server.
 
 | Integration | Works with | How agent invokes GWT |
 |-------------|-----------|----------------------|
-| **Claude Code Skill** | Claude Code | Reads SKILL.md → builds CLI args → calls binary directly |
+| **Root Skill** | Claude Code and Claude-like agents | Reads the root `SKILL.md` → builds CLI args → calls binary directly |
+| **Codex Skill** | Codex and Codex-like agents | Installs from `skills/gwt/` → reads that `SKILL.md` → calls binary directly |
 | **MCP Server** | Claude Code, Cursor, Zed, OpenAI Codex, any MCP client | Calls MCP tools → server.py → binary |
 
-Both integrations share the same GWT binary. They do not use separate install locations by default.
+The skill entrypoints are intentionally specialized. The `mcp/` directory remains shared across all clients.
+
+## Layout Strategy
+
+This repo uses distinct skill entrypoints:
+
+- Root skill layout: for Claude-like agents
+- `skills/gwt/`: for Codex-like agents
+
+This avoids forcing both agent families to share the exact same prompt wording and installer defaults.
 
 ## Install Destination Rules
 
 | Integration path | Situation | Install location |
 |------------------|-----------|------------------|
-| Claude Code Skill | Normal use | `~/.claude/skills/gwt/bin/` |
-| MCP Server | Normal use | `~/.claude/skills/gwt/bin/` |
+| Codex Skill | Normal use | `~/.codex/skills/gwt/bin/` |
+| Claude-like Skill | Normal use | `~/.claude/skills/gwt/bin/` |
+| MCP Server | Normal use | Shared server, independent of skill layout |
 | MCP Server | Local validation with `GWT_LOCAL_VALIDATION=1` | `./bin/` at the repo root |
 | Any path | Manual override with `python install.py --dir <path>` | The directory you specify |
 
-In other words, Skill and MCP normally install to the same `~/.claude/skills/gwt/bin/` location. The repo-local `./bin/` location is only for local validation or when you explicitly override the target directory.
+In other words, the skill layer is split by agent family, while the MCP layer stays shared.
 
 ---
 
@@ -30,53 +41,55 @@ In other words, Skill and MCP normally install to the same `~/.claude/skills/gwt
 
 ```
 gwt-integrations/
-├── SKILL.md           ← Claude Code Skill (auto-discovered at repo root)
-├── install.py         ← GWT binary installer, shared by Skill and MCP
+├── SKILL.md           ← Claude-like skill entrypoint
+├── install.py         ← Claude-like skill installer
+├── skills/
+│   └── gwt/           ← Codex-like skill entrypoint
 ├── mcp/
-│   ├── server.py      ← MCP server (4 tools)
+│   ├── server.py      ← Shared MCP server (4 tools)
 │   └── pyproject.toml
 └── LICENSE
 ```
 
-> **Why SKILL.md is at the root:** Claude Code discovers skills by looking for
-> `SKILL.md` at the root of each directory under `~/.claude/skills/`. It must
-> be at the top level — subdirectories are not scanned.
+> The root skill and `skills/gwt/` skill are intentionally different. They can
+> be tuned for their respective agent families without splitting the MCP server.
 
 ---
 
 ## How the Two Paths Work
 
 ```
-                    ┌─────────────────┐
-                    │   install.py    │  Downloads GWT binary
-                    └────────┬────────┘  to ~/.claude/skills/gwt/bin/
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-   ┌──────────▼──────────┐      ┌───────────▼──────────┐
-   │   Claude Code Skill │      │      MCP Server      │
-   │      SKILL.md       │      │   mcp/server.py      │
-   │                     │      │                      │
-   │  Agent reads docs,  │      │  Agent calls tools,  │
-   │  builds CLI args,   │      │  server builds args, │
-   │  execs binary       │      │  execs binary        │
-   └─────────────────────┘      └──────────────────────┘
-       Claude Code only            Any MCP client
+              ┌──────────────────┐
+              │  install.py (x2) │  Each skill has its own installer
+              └────────┬─────────┘  (Claude → ~/.claude, Codex → ~/.codex)
+                       │
+     ┌─────────────────┼─────────────────┐
+     │                 │                 │
+   ┌─▼───────────┐  ┌─▼───────────┐  ┌──▼─────────────────┐
+   │ Claude-Like  │  │ Codex-Like  │  │    MCP Server      │
+   │  SKILL.md   │  │ skills/gwt/ │  │  mcp/server.py     │
+   │  (root)     │  │  SKILL.md   │  │                    │
+   │             │  │             │  │  Agent calls tools, │
+   │ Agent reads │  │ Agent reads │  │  server builds args,│
+   │ docs, execs │  │ docs, execs │  │  execs binary       │
+   └─────────────┘  └─────────────┘  └────────────────────┘
+    Claude-like       Codex-like        Any MCP client
 ```
 
 Binary discovery order (default behavior):
 1. `GWT_BINARY_PATH` environment variable
 2. System `PATH`
-3. `~/.claude/skills/gwt/bin/`
-4. `./bin/` at the repo root (local validation / fallback)
-5. `./mcp/bin/` relative to `server.py` (legacy fallback)
+3. `~/.codex/skills/gwt/bin/`
+4. `~/.claude/skills/gwt/bin/`
+5. `./bin/` at the repo root (local validation / fallback)
+6. `./mcp/bin/` relative to `server.py` (legacy fallback)
 
-If the binary is missing, both paths resolve it the same way:
-the agent runs `install.py` automatically.
+If the binary is missing, each skill entrypoint can invoke its own `install.py`
+while the MCP server remains shared at the repo root.
 
 ---
 
-## Claude Code Skill
+## Claude-Like Skill
 
 ### Install
 
@@ -89,28 +102,43 @@ Claude Code finds `SKILL.md` at `~/.claude/skills/gwt/SKILL.md` automatically.
 
 ### Install GWT binary
 
-The skill tells Claude Code where `install.py` is. When the binary is missing,
-the agent runs it automatically. By default, this installs to
-`~/.claude/skills/gwt/bin/`:
+When the binary is missing, the agent can run `install.py` automatically. In a
+Claude-style install, this defaults to `~/.claude/skills/gwt/bin/`:
 
 ```bash
 # or run manually
 python ~/.claude/skills/gwt/install.py
 ```
 
+### Verify
+
+Open Claude Code and ask: `"What skills do you have?"`
+
+## Codex-Like Skill
+
+### Install
+
+For Codex's GitHub skill installer, use the dedicated subdirectory:
+
+```bash
+python install-skill-from-github.py --repo allenk/gwt-integrations --path skills/gwt
+```
+
+After installation, Codex will load the skill from `~/.codex/skills/gwt/`, and the bundled `install.py` will default to `~/.codex/skills/gwt/bin/`.
+
+### Verify
+
+Open Codex and confirm that the `gwt` skill is available.
+
 ### Local validation only
 
 To keep the repo self-contained during validation, install the binary locally
-instead of `~/.claude/skills/gwt/bin/`:
+instead of an agent skill directory:
 
 ```bash
 python ./install.py --dir ./bin
 # then: export GWT_LOCAL_VALIDATION=1
 ```
-
-### Verify
-
-Open Claude Code and ask: `"What skills do you have?"`
 
 ### Example prompts
 
@@ -146,15 +174,17 @@ The MCP server will detect a missing binary on first use and return an
 ```json
 {
   "found": false,
-  "install_command": "python /path/to/gwt-integrations/install.py"
+  "install_command": "python /path/to/gwt-integrations/install.py --dir /path/to/gwt-integrations/bin"
 }
 ```
 
-If you set `GWT_LOCAL_VALIDATION=1` before starting the MCP server, the returned
-`install_command` will target the repo-local `bin/` directory instead.
+The MCP server is shared across agent families, so its `install_command` always
+targets the repo-local `bin/` directory — it does not assume any particular
+skill directory (`~/.claude/` or `~/.codex/`).
 
-Without `GWT_LOCAL_VALIDATION=1`, the MCP install command uses the default
-location: `~/.claude/skills/gwt/bin/`.
+`GWT_LOCAL_VALIDATION=1` still controls the **search order** in
+`find_gwt_binary()`: when set, the repo-local `bin/` is searched before the
+skill directories.
 
 ### Configure clients
 
@@ -345,7 +375,7 @@ Process this whole folder and skip files with no watermark.
 ### Skill vs MCP in practice
 
 - Use the Skill when you want the agent to infer the CLI flags from normal
-  conversation in Claude Code.
+  conversation in a skill-enabled agent.
 - Use MCP when you want structured tool calls, explicit arguments, and easier
   integration with Cursor, Zed, Codex CLI, or any other MCP client.
 - In both cases, the user-facing request can stay natural-language; the
@@ -376,11 +406,15 @@ Escalation: `sigma=75, strength=180` → `sigma=100, strength=250`.
 
 **macOS Gatekeeper:**
 ```bash
+xattr -dr com.apple.quarantine ~/.codex/skills/gwt/bin/GeminiWatermarkTool
+# or:
 xattr -dr com.apple.quarantine ~/.claude/skills/gwt/bin/GeminiWatermarkTool
 ```
 
 **Windows SmartScreen:**
 ```powershell
+Unblock-File $env:USERPROFILE\.codex\skills\gwt\bin\GeminiWatermarkTool.exe
+# or:
 Unblock-File $env:USERPROFILE\.claude\skills\gwt\bin\GeminiWatermarkTool.exe
 ```
 
