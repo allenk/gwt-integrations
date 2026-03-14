@@ -65,14 +65,14 @@ gwt-integrations/
                        │
      ┌─────────────────┼─────────────────┐
      │                 │                 │
-   ┌─▼───────────┐  ┌─▼───────────┐  ┌──▼─────────────────┐
-   │ Claude-Like  │  │ Codex-Like  │  │    MCP Server      │
-   │  SKILL.md   │  │ skills/gwt/ │  │  mcp/server.py     │
-   │  (root)     │  │  SKILL.md   │  │                    │
+   ┌─▼───────────┐  ┌──▼──────────┐  ┌───▼─────────────────┐
+   │ Claude-Like │  │ Codex-Like  │  │    MCP Server       │
+   │  SKILL.md   │  │ skills/gwt/ │  │  mcp/server.py      │
+   │  (root)     │  │  SKILL.md   │  │                     │
    │             │  │             │  │  Agent calls tools, │
    │ Agent reads │  │ Agent reads │  │  server builds args,│
    │ docs, execs │  │ docs, execs │  │  execs binary       │
-   └─────────────┘  └─────────────┘  └────────────────────┘
+   └─────────────┘  └─────────────┘  └─────────────────────┘
     Claude-like       Codex-like        Any MCP client
 ```
 
