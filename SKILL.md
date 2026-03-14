@@ -36,18 +36,14 @@ Search in this order:
    - Windows: `.\bin\GeminiWatermarkTool.exe`
    - Linux/macOS: `./bin/GeminiWatermarkTool`
 
-If not found, run the installer (located at repo root, same directory as this skill):
+If not found, run the installer:
 ```
-python ./install.py
+python ~/.claude/skills/gwt/install.py
 ```
-
-Installed skill location:
-
-- Claude-like agents: `%USERPROFILE%\.claude\skills\gwt\install.py`
 
 For local validation inside this repo only:
 ```
-python ./install.py --dir ./bin
+python ~/.claude/skills/gwt/install.py --dir ./bin
 ```
 
 **Always pass `--no-banner`** when calling GWT — suppresses ASCII art that wastes tokens.
