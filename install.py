@@ -7,7 +7,7 @@ it to the Claude-like skill bin directory by default.
 
 Usage:
     python install.py
-    python install.py --version v0.2.5
+    python install.py --version v0.2.6
     python install.py --dir /custom/path
 """
 
@@ -101,7 +101,7 @@ def main():
         description="Install GeminiWatermarkTool binary for Claude-like skills or local validation"
     )
     parser.add_argument("--version", default="latest",
-                        help="Release version (e.g. v0.2.5). Default: latest")
+                        help="Release version (e.g. v0.2.6). Default: latest")
     parser.add_argument("--dir", default=None,
                         help="Custom install directory")
     args = parser.parse_args()
