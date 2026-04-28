@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/allenk-gwt-integrations-badge.png)](https://mseep.ai/app/allenk-gwt-integrations)
+
 # gwt-integrations
 
 > AI agent integrations for [GeminiWatermarkTool](https://github.com/allenk/GeminiWatermarkTool) — Claude-like skill, Codex-like skill, and a shared MCP server
