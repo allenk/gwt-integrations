@@ -7,8 +7,27 @@ it to the Claude-like skill bin directory by default.
 
 Usage:
     python install.py
-    python install.py --version v0.2.6
+    python install.py --mini
+    python install.py --version v0.2.9
+    python install.py --version v0.2.9 --mini
     python install.py --dir /custom/path
+    python install.py --no-verify
+
+Variants:
+    full (default)  GUI + CLI build, ~18 MB on Windows
+    --mini          CLI-only build, UPX-compressed on Windows/Linux,
+                    ~5-12 MB depending on platform. Requires v0.2.7+.
+
+Regardless of which variant is downloaded, the binary is installed
+under the canonical name `GeminiWatermarkTool[.exe]`, so SKILL.md /
+.claude/settings.json / MCP server invocation paths stay constant.
+
+Verification:
+    Releases v0.2.9 and newer ship a SHA256SUMS.txt asset; the installer
+    downloads it from the same release URL and verifies the binary
+    against the published digest. For older releases the installer
+    falls back to the small KNOWN_SHA256 table at the top of this file
+    (legacy v0.2.5 entries kept for archaeological installs).
 """
 
 import argparse
@@ -18,6 +37,7 @@ import platform
 import stat
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -26,15 +46,33 @@ GITHUB_REPO = "allenk/GeminiWatermarkTool"
 RELEASES_BASE = f"https://github.com/{GITHUB_REPO}/releases"
 
 # (zip filename on GitHub Releases, binary name inside the zip)
-BINARIES = {
+# Two release variants since v0.2.7:
+#   - full: BUILD_GUI=ON,  ENABLE_AI_DENOISE=ON  (about 18 MB on Win)
+#   - mini: BUILD_GUI=OFF, ENABLE_AI_DENOISE=ON  (about 5 MB on Win, UPX)
+BINARIES_FULL = {
     "Windows": ("GeminiWatermarkTool-Windows-x64.zip",     "GeminiWatermarkTool.exe"),
     "Linux":   ("GeminiWatermarkTool-Linux-x64.zip",       "GeminiWatermarkTool"),
     "Darwin":  ("GeminiWatermarkTool-macOS-Universal.zip", "GeminiWatermarkTool"),
 }
 
-# SHA256 checksums for known releases — keyed by (version_tag, platform).
-# Only verified when --version is explicitly given (latest has no pinned hash).
-# Update this table when new releases are published.
+BINARIES_MINI = {
+    "Windows": ("gwt-mini-windows-x64.zip",         "gwt-mini.exe"),
+    "Linux":   ("gwt-mini-linux-x64.zip",           "gwt-mini"),
+    "Darwin":  ("gwt-mini-macos-universal.zip",     "gwt-mini"),
+}
+
+# The binary is always installed under the canonical name regardless of
+# which variant is downloaded. This keeps SKILL.md / settings.json / MCP
+# server paths invariant when a user switches between full and mini.
+INSTALL_NAMES = {
+    "Windows": "GeminiWatermarkTool.exe",
+    "Linux":   "GeminiWatermarkTool",
+    "Darwin":  "GeminiWatermarkTool",
+}
+
+# Legacy SHA256 hashes for releases that predate SHA256SUMS.txt (v0.2.9+).
+# Only used when fetching SHA256SUMS.txt returns 404. Do not extend; new
+# releases publish their digests as a release asset, not in this table.
 KNOWN_SHA256: dict[tuple[str, str], str] = {
     ("v0.2.5", "Windows"): "c480fd318a0ee2cd0267973e93f4045c71de79ccd11b7329e0aaed76d5e48d25",
     ("v0.2.5", "Linux"):   "ccf1c06b87a77193569f62893f5dd5fa9cc1ce69eccc96763d5b51cc813177c2",
@@ -96,23 +134,72 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def fetch_sha256sums(version_tag: str) -> dict[str, str]:
+    """Fetch and parse SHA256SUMS.txt from the release.
+
+    Returns ``{filename: hex_digest}`` keyed by the bare zip filename.
+    Returns an empty dict on HTTP 404, which means either the release
+    predates v0.2.9 or the asset has not been uploaded yet. Other HTTP
+    errors propagate.
+
+    Accepts either GNU coreutils format ``<digest>  <filename>`` or the
+    binary-mode variant ``<digest>  *<filename>`` (asterisk stripped).
+    """
+    if version_tag == "latest":
+        url = f"{RELEASES_BASE}/latest/download/SHA256SUMS.txt"
+    else:
+        url = f"{RELEASES_BASE}/download/{version_tag}/SHA256SUMS.txt"
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "gwt-installer"})
+        with urllib.request.urlopen(req) as resp:
+            content = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {}
+        raise
+
+    sums: dict[str, str] = {}
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        digest, name = parts[0], parts[1].strip()
+        # sha256sum binary-mode marker is a leading '*' on the filename
+        if name.startswith("*"):
+            name = name[1:]
+        sums[name] = digest
+    return sums
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Install GeminiWatermarkTool binary for Claude-like skills or local validation"
     )
     parser.add_argument("--version", default="latest",
-                        help="Release version (e.g. v0.2.6). Default: latest")
+                        help="Release version (e.g. v0.2.9). Default: latest")
+    parser.add_argument("--mini", action="store_true",
+                        help="Install the gwt-mini build (CLI-only, smaller). Requires v0.2.7 or later.")
     parser.add_argument("--dir", default=None,
                         help="Custom install directory")
+    parser.add_argument("--no-verify", action="store_true",
+                        help="Skip SHA256 verification (not recommended)")
     args = parser.parse_args()
 
     system = platform.system()
-    if system not in BINARIES:
+    if system not in BINARIES_FULL:
         print(f"ERROR: Unsupported platform: {system}", file=sys.stderr)
         print("Supported: Windows, Linux, macOS (Darwin)", file=sys.stderr)
         sys.exit(1)
 
-    zip_filename, binary_name = BINARIES[system]
+    binaries = BINARIES_MINI if args.mini else BINARIES_FULL
+    build_label = "mini" if args.mini else "full"
+
+    zip_filename, binary_in_zip = binaries[system]
+    binary_install_name = INSTALL_NAMES[system]
 
     # Normalise version tag
     if args.version != "latest":
@@ -122,8 +209,12 @@ def main():
 
     print(f"Platform: {system}")
     print(f"Version:  {version_tag}")
+    print(f"Build:    {build_label}")
     print(f"Package:  {zip_filename}")
-    print(f"Binary:   {binary_name}")
+    if binary_in_zip != binary_install_name:
+        print(f"Binary:   {binary_in_zip} -> {binary_install_name}")
+    else:
+        print(f"Binary:   {binary_install_name}")
 
     if version_tag == "latest":
         url = f"{RELEASES_BASE}/latest/download/{zip_filename}"
@@ -132,7 +223,7 @@ def main():
 
     install_dir = resolve_install_dir(system, args.dir)
     install_dir.mkdir(parents=True, exist_ok=True)
-    dest = install_dir / binary_name
+    dest = install_dir / binary_install_name
 
     print(f"Target:   {dest}")
     print()
@@ -148,7 +239,12 @@ def main():
     except urllib.error.HTTPError as e:
         print(f"\nERROR: HTTP {e.code} — {e.reason}", file=sys.stderr)
         if e.code == 404:
-            print(f"  Version not found. Check: {RELEASES_BASE}", file=sys.stderr)
+            print(f"  Asset not found at {url}", file=sys.stderr)
+            if args.mini:
+                print(f"  Note: gwt-mini was introduced in v0.2.7. Older versions only ship the full build.",
+                      file=sys.stderr)
+            else:
+                print(f"  Check available releases: {RELEASES_BASE}", file=sys.stderr)
         sys.exit(1)
     except urllib.error.URLError as e:
         print(f"\nERROR: Network error — {e.reason}", file=sys.stderr)
@@ -156,10 +252,17 @@ def main():
 
     print()
 
-    # SHA256 verification (only when a specific version with known hash is requested)
-    expected_hash = KNOWN_SHA256.get((version_tag, system))
-    if expected_hash:
-        print("Verifying SHA256 ...", end=" ", flush=True)
+    # SHA256 verification
+    # Prefer SHA256SUMS.txt published with the release (v0.2.9+), fall back
+    # to the legacy KNOWN_SHA256 table for older versions.
+    sums = fetch_sha256sums(version_tag)
+    expected_hash = sums.get(zip_filename) or KNOWN_SHA256.get((version_tag, system))
+
+    if args.no_verify:
+        print("Skipping SHA256 verification (--no-verify)")
+    elif expected_hash:
+        source = "SHA256SUMS.txt" if zip_filename in sums else "legacy table"
+        print(f"Verifying SHA256 (against {source}) ...", end=" ", flush=True)
         actual_hash = sha256_file(tmp_path)
         if actual_hash != expected_hash:
             print("FAILED", file=sys.stderr)
@@ -169,21 +272,23 @@ def main():
             sys.exit(1)
         print("OK")
     else:
-        if version_tag != "latest":
-            print(f"Note: No known checksum for {version_tag}/{system} — skipping verification.")
+        print(f"WARNING: no checksum available for {zip_filename}.")
+        print(f"  Releases v0.2.9+ ship a SHA256SUMS.txt asset; older releases do not.")
+        print(f"  Use --no-verify to silence this notice.")
 
-    # Extract binary from ZIP
-    print(f"Extracting {binary_name} ...")
+    # Extract binary from ZIP, renaming to the canonical install name
+    print(f"Extracting {binary_in_zip} ...")
     try:
         with zipfile.ZipFile(tmp_path, "r") as zf:
             # Find the binary inside the zip (may be in a subdirectory)
-            matches = [n for n in zf.namelist() if Path(n).name == binary_name]
+            matches = [n for n in zf.namelist() if Path(n).name == binary_in_zip]
             if not matches:
-                print(f"ERROR: '{binary_name}' not found in zip.", file=sys.stderr)
+                print(f"ERROR: '{binary_in_zip}' not found in zip.", file=sys.stderr)
                 print(f"  Contents: {zf.namelist()}", file=sys.stderr)
                 sys.exit(1)
 
-            # Extract to install_dir, stripping any subdirectory prefix
+            # Extract to install_dir under the canonical install name,
+            # stripping any subdirectory prefix.
             with zf.open(matches[0]) as src, open(dest, "wb") as out:
                 out.write(src.read())
     finally:
@@ -196,7 +301,7 @@ def main():
         print("Executable permission set.")
 
     print()
-    print(f"✅  GeminiWatermarkTool installed successfully!")
+    print(f"✅  GeminiWatermarkTool ({build_label}) installed successfully!")
     print(f"    Location: {dest}")
     print()
 
