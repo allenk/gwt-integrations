@@ -8,15 +8,17 @@ it to the Claude-like skill bin directory by default.
 Usage:
     python install.py
     python install.py --mini
-    python install.py --version v0.2.9
-    python install.py --version v0.2.9 --mini
+    python install.py --full
+    python install.py --version v0.3.0
+    python install.py --version v0.3.0 --mini
+    python install.py --version v0.3.0 --full
     python install.py --dir /custom/path
     python install.py --no-verify
 
 Variants:
-    full (default)  GUI + CLI build, ~18 MB on Windows
-    --mini          CLI-only build, UPX-compressed on Windows/Linux,
+    mini (default)  CLI-only build, UPX-compressed on Windows/Linux,
                     ~5-12 MB depending on platform. Requires v0.2.7+.
+    --full          GUI + CLI build, ~18 MB on Windows.
 
 Regardless of which variant is downloaded, the binary is installed
 under the canonical name `GeminiWatermarkTool[.exe]`, so SKILL.md /
@@ -180,9 +182,11 @@ def main():
         description="Install GeminiWatermarkTool binary for Claude-like skills or local validation"
     )
     parser.add_argument("--version", default="latest",
-                        help="Release version (e.g. v0.2.9). Default: latest")
+                        help="Release version (e.g. v0.3.0). Default: latest")
     parser.add_argument("--mini", action="store_true",
-                        help="Install the gwt-mini build (CLI-only, smaller). Requires v0.2.7 or later.")
+                        help="Install the gwt-mini build (CLI-only, smaller). This is the default.")
+    parser.add_argument("--full", action="store_true",
+                        help="Install the full GUI + CLI build instead of mini.")
     parser.add_argument("--dir", default=None,
                         help="Custom install directory")
     parser.add_argument("--no-verify", action="store_true",
@@ -195,8 +199,12 @@ def main():
         print("Supported: Windows, Linux, macOS (Darwin)", file=sys.stderr)
         sys.exit(1)
 
-    binaries = BINARIES_MINI if args.mini else BINARIES_FULL
-    build_label = "mini" if args.mini else "full"
+    if args.mini and args.full:
+        parser.error("--mini and --full are mutually exclusive")
+
+    use_mini = not args.full
+    binaries = BINARIES_MINI if use_mini else BINARIES_FULL
+    build_label = "mini" if use_mini else "full"
 
     zip_filename, binary_in_zip = binaries[system]
     binary_install_name = INSTALL_NAMES[system]
@@ -240,7 +248,7 @@ def main():
         print(f"\nERROR: HTTP {e.code} — {e.reason}", file=sys.stderr)
         if e.code == 404:
             print(f"  Asset not found at {url}", file=sys.stderr)
-            if args.mini:
+            if use_mini:
                 print(f"  Note: gwt-mini was introduced in v0.2.7. Older versions only ship the full build.",
                       file=sys.stderr)
             else:
